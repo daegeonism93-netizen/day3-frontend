@@ -49,6 +49,12 @@
     </table>
     <div id="pred"></div>
   </div>
+
+  <div class="card" id="chartCard">
+    <b id="chartTitle">시간별 PM10 기록과 다음 1시간 예측</b>
+    <div id="chart" style="margin-top:8px">측정소의 "1시간 뒤?" 버튼을 눌러 보세요.</div>
+    <small id="chartNote"></small>
+  </div>
 </div>
 
 <script src="config.js"></script>
@@ -97,7 +103,47 @@
           "<td>" + esc(x.pm25 == null ? "-" : x.pm25) + " " + badge(x.pm25_grade) + "</td>" +
           '<td><button type="button" data-st="' + esc(x.station) + '">1시간 뒤?</button></td></tr>';
       }).join("");
+      var first = document.querySelector("#rows button[data-st]");  // 처음엔 가장 높은 측정소의 그래프를 보여 준다
+      if (first) first.click();
     }).catch(showError);
+  }
+
+  // ── 시계열 차트: DB에 쌓인 기록(실선) + 다음 1시간 예측(빨간 점선) ──
+  function drawChart(h) {
+    var pts = h.points.filter(function (p) { return p.pm10 != null; });
+    var pr = h.prediction;
+    if (pts.length < 2) { $("chart").textContent = "그래프를 그릴 기록이 아직 부족해요."; return; }
+    var W = 640, H = 240, L = 40, R = 16, T = 14, B = 34;
+    var vals = pts.map(function (p) { return p.pm10; });
+    if (pr.ready) vals.push(pr.next_pm10);
+    var max = Math.max(40, Math.max.apply(null, vals) * 1.15);
+    var n = pts.length + (pr.ready ? 1 : 0);
+    var x = function (i) { return L + (W - L - R) * (n === 1 ? 0 : i / (n - 1)); };
+    var y = function (v) { return T + (H - T - B) * (1 - v / max); };
+    var s = '<svg viewBox="0 0 ' + W + " " + H + '" style="width:100%;height:auto" role="img" aria-label="PM10 시계열 그래프">';
+    [[30, "좋음 30"], [80, "보통 80"]].forEach(function (g) {
+      if (g[0] < max) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(g[0]) + '" y2="' + y(g[0]) + '" stroke="#e6d6c5" stroke-dasharray="3 4"/>' +
+        '<text x="' + (L - 4) + '" y="' + (y(g[0]) + 4) + '" font-size="10" text-anchor="end" fill="#7a6a5c">' + g[0] + "</text>";
+    });
+    s += '<line x1="' + L + '" x2="' + L + '" y1="' + T + '" y2="' + (H - B) + '" stroke="#cdbba8"/>' +
+         '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="#cdbba8"/>';
+    var line = pts.map(function (p, i) { return x(i) + "," + y(p.pm10); }).join(" ");
+    s += '<polyline points="' + line + '" fill="none" stroke="#2f80ed" stroke-width="2.5" stroke-linejoin="round"/>';
+    pts.forEach(function (p, i) { s += '<circle cx="' + x(i) + '" cy="' + y(p.pm10) + '" r="3" fill="#2f80ed"><title>' + esc(p.time) + " PM10 " + p.pm10 + "</title></circle>"; });
+    var step = Math.max(1, Math.ceil(pts.length / 6));
+    pts.forEach(function (p, i) {
+      if (i % step === 0) s += '<text x="' + x(i) + '" y="' + (H - 14) + '" font-size="10" text-anchor="middle" fill="#7a6a5c">' + esc(p.time.slice(5, 16)) + "</text>";
+    });
+    if (pr.ready) {
+      var li = pts.length - 1, pi = pts.length;
+      s += '<line x1="' + x(li) + '" y1="' + y(pts[li].pm10) + '" x2="' + x(pi) + '" y2="' + y(pr.next_pm10) + '" stroke="#eb5757" stroke-width="2.5" stroke-dasharray="6 5"/>' +
+           '<circle cx="' + x(pi) + '" cy="' + y(pr.next_pm10) + '" r="5" fill="#fff" stroke="#eb5757" stroke-width="2.5"><title>예측 PM10 ' + pr.next_pm10 + "</title></circle>" +
+           '<text x="' + x(pi) + '" y="' + (y(pr.next_pm10) - 10) + '" font-size="11" text-anchor="middle" fill="#eb5757" font-weight="700">예측 ' + pr.next_pm10 + "</text>";
+    }
+    $("chart").innerHTML = s + "</svg>";
+    $("chartTitle").textContent = h.station + " · 시간별 PM10 기록과 다음 1시간 예측";
+    $("chartNote").innerHTML = "DB에 저장된 기록 " + esc(h.count) + "개 (" + esc(pts[0].time) + " ~ " + esc(pts[pts.length - 1].time) + ")" +
+      (pr.ready ? " · 예측 방법: " + esc(pr.model) : "");
   }
 
   $("rows").addEventListener("click", function (e) {
@@ -107,11 +153,13 @@
     var box = $("pred");
     box.style.display = "block";
     box.textContent = st + " 예측 중…";
-    get("/air/predict?station=" + encodeURIComponent(st)).then(function (p) {
+    get("/air/history?hours=48&station=" + encodeURIComponent(st)).then(function (h) {
+      var p = h.prediction;
       box.innerHTML = p.ready
-        ? "<b>" + esc(p.station) + "</b> 1시간 뒤 PM10 약 <b>" + esc(p.next_pm10) + "</b> " + badge(p.next_grade) +
+        ? "<b>" + esc(st) + "</b> 1시간 뒤 PM10 약 <b>" + esc(p.next_pm10) + "</b> " + badge(p.next_grade) +
           " <small>(평균 오차 ±" + esc(p.avg_error) + ")</small>"
         : "<b>" + esc(st) + "</b> — " + esc(p.message);
+      drawChart(h);
     }).catch(function (err) { box.textContent = "예측 실패: " + err.message; });
   });
 
