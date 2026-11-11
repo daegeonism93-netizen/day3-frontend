@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>두리샵 · 귀염둥이 용품점</title>
+<meta name="description" content="코카스파니엘 두리가 고른 강아지 용품 — 장바구니 데모 (FastAPI + Supabase)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐾%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="./" aria-label="두리샵 홈"><span class="paw">🐾</span> 두리샵</a>
+    <p class="tag">코카스파니엘 두리가 직접 고른 물건들</p>
+    <button class="cart-btn" id="openCart" aria-label="장바구니 열기">
+      <span class="bag">🛒</span>
+      <span class="cart-label">장바구니</span>
+      <span class="badge" id="badge" hidden>0</span>
+    </button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero" role="img" aria-label="혀를 낼름 내민 두리와 포메라니안 친구">
+    <div class="hero-card">
+      <h1>우리 아이 <em>행복</em> 장바구니</h1>
+      <p>담고, 빼고, 수량도 바꿔 보세요. 장바구니는 서버(FastAPI)를 거쳐 DB(Supabase)에 저장돼서 새로고침해도 그대로예요.</p>
+      <p class="ship">🚚 3만원 이상 <b>무료배송</b></p>
+    </div>
+  </section>
+
+  <div class="alert" id="alert" role="alert" hidden></div>
+
+  <nav class="chips" id="chips" aria-label="카테고리"></nav>
+  <section class="grid" id="grid" aria-live="polite"></section>
+</main>
+
+<footer class="foot">
+  <p>🐾 데모 쇼핑몰이에요. 실제 결제와 배송은 이루어지지 않아요.</p>
+  <p class="small">Frontend: Vercel · API: FastAPI on Railway · DB: Supabase</p>
+</footer>
+
+<!-- 장바구니 서랍 -->
+<div class="veil" id="veil" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="장바구니">
+  <div class="d-head">
+    <h2>🛒 내 장바구니 <small id="dCount"></small></h2>
+    <button class="icon" id="closeCart" aria-label="닫기">✕</button>
+  </div>
+  <div class="ship-box" id="shipBox"></div>
+  <ul class="lines" id="lines"></ul>
+  <div class="d-empty" id="empty" hidden>
+    <img class="pet" src="img/empty.jpg" alt="차 안에서 쿨쿨 자는 두리">
+    <p>장바구니가 비어 있어요</p>
+    <button class="ghost" id="goShop">쇼핑하러 가기</button>
+  </div>
+  <div class="d-foot" id="dFoot">
+    <dl>
+      <div><dt>상품금액</dt><dd id="sSub">0원</dd></div>
+      <div><dt>배송비</dt><dd id="sShip">0원</dd></div>
+      <div class="sum"><dt>결제 예정금액</dt><dd id="sTotal">0원</dd></div>
+    </dl>
+    <button class="primary" id="checkout">주문하기</button>
+    <button class="link" id="clear">장바구니 비우기</button>
+  </div>
+</aside>
+
+<!-- 주문 완료 -->
+<div class="modal" id="modal" hidden>
+  <div class="box">
+    <img class="pet big" src="img/order.jpg" alt="간식을 기다리는 두리">
+    <h3>주문이 접수됐어요!</h3>
+    <p id="orderMsg"></p>
+    <p class="small">데모라서 실제 결제·배송은 없어요. 장바구니는 비워졌어요.</p>
+    <button class="primary" id="modalOk">계속 쇼핑하기</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
