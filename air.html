@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>제주 미세먼지 · 두리샵</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root { --bg:#fff8f1; --ink:#2b2118; --muted:#7a6a5c; --card:#fff; --line:#efe1d3; --accent:#d9663a; }
   * { box-sizing: border-box; }
@@ -26,6 +27,9 @@
   #pred { margin-top:10px; padding:12px; background:#fff3e8; border-radius:10px; display:none; }
   #alert { background:#fde5e5; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:none; }
   small { color:var(--muted); }
+  #map { height:420px; border-radius:12px; margin-top:8px; z-index:0; }
+  .pop { line-height:1.75; font-size:.92rem; }
+  .pop button { margin-top:4px; }
   @media (max-width:480px) { .hide-s { display:none; } .big { font-size:1.6rem; } }
 </style>
 </head>
@@ -43,6 +47,12 @@
   <div class="card" id="summary">불러오는 중…</div>
 
   <div class="card">
+    <b>🗺️ 지도를 눌러 보세요 — 가장 가까운 측정소의 미세먼지</b>
+    <div id="map"></div>
+    <small>동그라미 색 = PM10 등급 · 지도 © OpenStreetMap</small>
+  </div>
+
+  <div class="card">
     <table>
       <thead><tr><th>측정소</th><th class="hide-s">시각</th><th>PM10</th><th>PM2.5</th><th>예측</th></tr></thead>
       <tbody id="rows"><tr><td colspan="5">불러오는 중…</td></tr></tbody>
@@ -58,6 +68,7 @@
 </div>
 
 <script src="config.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function () {
   "use strict";
@@ -84,9 +95,56 @@
     box.style.display = "block";
   }
 
+
+  // ── [지도] 측정소 동그라미 + 누른 곳에서 가장 가까운 측정소 말풍선 ──
+  var COLOR = { "좋음": "#2f80ed", "보통": "#27ae60", "나쁨": "#f2994a", "매우나쁨": "#eb5757" };
+  var map = L.map("map").setView([33.38, 126.55], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18, attribution: "&copy; OpenStreetMap contributors"
+  }).addTo(map);
+
+  function drawStations(rows) {
+    rows.filter(function (r) { return r.lat != null && r.lng != null; }).forEach(function (r) {
+      L.circleMarker([r.lat, r.lng], {
+        radius: 10, color: "#fff", weight: 2, fillColor: COLOR[r.pm10_grade] || "#999", fillOpacity: 0.9
+      }).bindTooltip(esc(r.station) + " PM10 " + esc(r.pm10 == null ? "-" : r.pm10))
+        .on("click", function (e) { pick(e.latlng); })
+        .addTo(map);
+    });
+  }
+
+  function pick(latlng) {
+    var pop = L.popup().setLatLng(latlng).setContent("불러오는 중…").openOn(map);
+    get("/air/near?lat=" + latlng.lat + "&lng=" + latlng.lng).then(function (d) {
+      pop.setContent(
+        '<div class="pop"><b>' + esc(d.station) + "</b> 측정소 <small>(여기서 " + esc(d.distance_km) + "km · " + esc(String(d.time).slice(11)) + ")</small><br>" +
+        "미세먼지 PM10 <b>" + esc(d.pm10 == null ? "-" : d.pm10) + "</b> " + badge(d.pm10_grade) + "<br>" +
+        "초미세먼지 PM2.5 <b>" + esc(d.pm25 == null ? "-" : d.pm25) + "</b> " + badge(d.pm25_grade) + "<br>" +
+        '<span class="pp"><button type="button" data-pst="' + esc(d.station) + '">1시간 뒤?</button></span></div>'
+      );
+    }).catch(function (err) {
+      pop.setContent('<span style="color:#c0392b">' + esc(err instanceof TypeError ? "서버에 연결할 수 없어요" : err.message) + "</span>");
+    });
+  }
+  map.on("click", function (e) { pick(e.latlng); });
+
+  // 말풍선 안의 "1시간 뒤?" 버튼
+  $("map").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-pst]");
+    if (!b) return;
+    var span = b.parentNode, st = b.getAttribute("data-pst");
+    span.textContent = "예측 중…";
+    get("/air/predict?station=" + encodeURIComponent(st)).then(function (p) {
+      span.innerHTML = p.ready
+        ? "1시간 뒤 PM10 약 <b>" + esc(p.next_pm10) + "</b> " + badge(p.next_grade) + " <small>(±" + esc(p.avg_error) + ")</small>"
+        : esc(p.message);
+    }).catch(function (err) { span.textContent = "예측 실패: " + err.message; });
+  });
+
   function load() {
     Promise.all([get("/air/summary"), get("/air/latest")]).then(function (r) {
       var s = r[0], rows = r[1];
+      drawStations(rows);
       $("mode").textContent = s.mode === "demo" ? "연습 데이터" : "실시간 에어코리아";
       if (!rows.length) {
         $("summary").innerHTML = "아직 수집된 데이터가 없어요. 잠시 후 다시 확인해 주세요.";
